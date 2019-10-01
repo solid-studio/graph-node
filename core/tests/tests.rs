@@ -20,7 +20,7 @@ use std::time::Instant;
 use graph::components::ethereum::*;
 use graph::prelude::*;
 use graph_core::{LinkResolver, SubgraphInstanceManager};
-use graph_mock::{FakeStore, MockBlockStreamBuilder, MockStore};
+use graph_mock::{FakeStore, MockBlockStreamBuilder, MockEthereumAdapter, MockStore};
 use web3::types::*;
 
 use crate::tokio::timer::Delay;
@@ -251,6 +251,12 @@ fn subgraph_provider_events() {
                 .into_iter()
                 .map(|s| ("mainnet".to_string(), s))
                 .collect();
+            let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
+            let ethereum_adapters: HashMap<String, Arc<MockEthereumAdapter>> =
+                vec![mock_ethereum_adapter]
+                    .into_iter()
+                    .map(|e| ("mainnet".to_string(), e))
+                    .collect();
             let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(&logger, store.clone()));
             let mut provider = graph_core::SubgraphAssignmentProvider::new(
                 &logger_factory,
@@ -267,6 +273,7 @@ fn subgraph_provider_events() {
                 Arc::new(provider),
                 store.clone(),
                 stores,
+                ethereum_adapters,
                 node_id.clone(),
                 SubgraphVersionSwitchingMode::Instant,
             );
