@@ -220,16 +220,28 @@ where
             );
         }
 
+        let contract_address_and_event_sig_pairs: HashSet<(Option<u64>, Option<Address>, H256)> =
+            log_filter
+                .clone()
+                .contract_address_and_event_sig_pairs
+                .into_iter()
+                .filter(|(start_block, _addr, _sig)| match start_block {
+                    Some(block_num) => block_num <= &to,
+                    None => true,
+                })
+                .collect();
+        println!(
+            "length of log filter pairs, before: {}, after: {}",
+            &log_filter.contract_address_and_event_sig_pairs.len(),
+            &contract_address_and_event_sig_pairs.len()
+        );
         // Collect all event sigs
         let eth = self.clone();
         let logger = logger.to_owned();
 
-        let event_sigs = log_filter
-            .contract_address_and_event_sig_pairs
+        let event_sigs = contract_address_and_event_sig_pairs
             .iter()
-            .map(|(_addr, sig)| *sig)
-            .collect::<HashSet<H256>>()
-            .into_iter()
+            .map(|(_block_num, _addr, sig)| *sig)
             .collect::<Vec<H256>>();
 
         // Collect all contract addresses; if we have a data source without a contract
@@ -243,17 +255,15 @@ where
         // - At the top level in `BlockStreamContext::do_step`
         // - At the subgraph level in `SubgraphInstance::matches_log`
         // - At the data source level in `RuntimeHost::matches_log`
-        let addresses = if log_filter
-            .contract_address_and_event_sig_pairs
+        let addresses = if contract_address_and_event_sig_pairs
             .iter()
-            .any(|(addr, _)| addr.is_none())
+            .any(|(_start_block, addr, _)| addr.is_none())
         {
             vec![]
         } else {
-            log_filter
-                .contract_address_and_event_sig_pairs
+            contract_address_and_event_sig_pairs
                 .iter()
-                .map(|(addr, _sig)| match addr {
+                .map(|(_start_block, addr, _sig)| match addr {
                     None => unreachable!(
                         "shouldn't include addresses in Ethereum logs filter \
                          if there are data sources without a contract address"
@@ -901,6 +911,9 @@ where
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+        // TODO: Only apply filters if in filter range
+        //       Do I need to
+
         // Each trigger filter needs to be queried for the same block range
         // and the blocks yielded need to be deduped. If any error occurs
         // while searching for a trigger type, the entire operation fails.
@@ -908,10 +921,16 @@ where
         let mut block_futs: futures::stream::FuturesUnordered<
             Box<dyn Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send>,
         > = futures::stream::FuturesUnordered::new();
+
+        // TODO: make it --- if block_filter.start_block < to && block_filter.trigger_every_block
         if block_filter.trigger_every_block {
             // All blocks in the range contain a trigger
+            let block_from = match block_filter.earliest_ethereum_block {
+                Some(block_num) => from.max(block_num),
+                None => from,
+            };
             block_futs.push(Box::new(
-                eth.blocks(&logger, from, to)
+                eth.blocks(&logger, block_from, to)
                     .map(|block_ptrs| block_ptrs.into_iter().collect()),
             ));
         } else {
@@ -938,6 +957,7 @@ where
                     // in the block filter, transform the `block_filter` into
                     // a `call_filter` and run `blocks_with_calls`
                     let call_filter = EthereumCallFilter::from(block_filter);
+
                     block_futs.push(Box::new(eth.blocks_with_calls(
                         &logger,
                         from,
@@ -1034,7 +1054,10 @@ where
         call_filter: EthereumCallFilter,
     ) -> Box<dyn Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send> {
         let eth = self.clone();
-
+        let from = match call_filter.earliest_ethereum_block {
+            Some(block_num) => from.max(block_num),
+            None => from,
+        };
         let addresses: Vec<H160> = call_filter
             .contract_addresses_function_signatures
             .iter()

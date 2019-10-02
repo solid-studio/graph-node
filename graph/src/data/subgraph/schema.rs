@@ -687,7 +687,7 @@ impl WriteOperations for EthereumContractSourceEntity {
         entity.set("id", id);
         entity.set("address", self.address);
         entity.set("abi", self.abi);
-        entity.set("start_block", self.start_block);
+        entity.set("startBlock", self.start_block);
         ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
