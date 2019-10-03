@@ -925,12 +925,13 @@ where
         // TODO: make it --- if block_filter.start_block < to && block_filter.trigger_every_block
         if block_filter.trigger_every_block {
             // All blocks in the range contain a trigger
-            let block_from = match block_filter.earliest_ethereum_block {
-                Some(block_num) => from.max(block_num),
-                None => from,
-            };
+            //            let block_from = match block_filter.earliest_ethereum_block {
+            //                Some(block_num) => from.max(block_num),
+            //                None => from,
+            //            };
+
             block_futs.push(Box::new(
-                eth.blocks(&logger, block_from, to)
+                eth.blocks(&logger, from, to)
                     .map(|block_ptrs| block_ptrs.into_iter().collect()),
             ));
         } else {
@@ -1054,14 +1055,14 @@ where
         call_filter: EthereumCallFilter,
     ) -> Box<dyn Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send> {
         let eth = self.clone();
-        let from = match call_filter.earliest_ethereum_block {
-            Some(block_num) => from.max(block_num),
-            None => from,
-        };
         let addresses: Vec<H160> = call_filter
             .contract_addresses_function_signatures
             .iter()
-            .map(|(addr, _fsigs)| *addr)
+            .filter(|(_addr, (start_block, _fsigs))| match start_block {
+                Some(block_num) => block_num <= &to,
+                None => false,
+            })
+            .map(|(addr, (_start_block, _fsigs))| *addr)
             .collect::<HashSet<H160>>()
             .into_iter()
             .collect::<Vec<H160>>();

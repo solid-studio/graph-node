@@ -286,10 +286,6 @@ where
         let block_filter = self.block_filter.clone();
         let reorg_threshold = ctx.reorg_threshold;
 
-        let start_log_filter = self.log_filter.clone();
-        let start_call_filter = self.call_filter.clone();
-        let start_block_filter = self.block_filter.clone();
-
         // Get pointers from database for comparison
         let head_ptr_opt = ctx.chain_store.chain_head_ptr().unwrap();
         let subgraph_ptr = ctx
@@ -405,38 +401,6 @@ where
                             };
                             cmp::min(from + speedup * *ETHEREUM_BLOCK_RANGE_SIZE - 1, to_limit)
                         };
-
-                        let log_start_block_checkpoints_in_play: Vec<u64> = start_log_filter
-                                .clone()
-                                .contract_address_and_event_sig_pairs
-                                .iter()
-                                .filter(|(start_block, _addr, _sig)| {
-                                    match start_block {
-                                        Some(block_num) => (block_num < &to && block_num > &from),
-                                        None => false
-                                    }
-                                })
-                                .map(|(start_block, _addr, _sig)| start_block.unwrap())
-                                .collect();
-
-                        let call_start_block_checkpoints_in_play =
-                            start_call_filter
-                                .clone()
-                                .earliest_ethereum_block
-                                .and_then(|block_num| {
-                                    if (block_num < to && block_num > from) {
-                                        Some(block_num)
-                                    } else { None }
-                                });
-
-                        let block_start_block_checkpoints_in_play =
-                            start_block_filter.clone()
-                                .earliest_ethereum_block
-                                .and_then(|block_num| {
-                                    if (block_num < to && block_num > from) {
-                                        Some(block_num)
-                                    } else { None }
-                                });
 
                         debug!(ctx.logger, "Scanning blocks [{}, {}]", from, to);
                         Box::new(
@@ -1341,6 +1305,7 @@ fn parse_log_triggers(
     log_filter: EthereumLogFilter,
     block: &EthereumBlock,
 ) -> Vec<EthereumTrigger> {
+    let block_num = block.block.number;
     block
         .transaction_receipts
         .iter()
@@ -1349,7 +1314,7 @@ fn parse_log_triggers(
             receipt
                 .logs
                 .iter()
-                .filter(move |log| log_filter.matches(log))
+                .filter(move |log| log_filter.matches(log, block_num))
                 .map(move |log| EthereumTrigger::Log(log.clone()))
         })
         .collect()

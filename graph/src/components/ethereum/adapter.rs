@@ -108,7 +108,7 @@ impl EthereumLogFilter {
     }
 
     /// Check if this filter matches the specified `Log`.
-    pub fn matches(&self, log: &Log) -> bool {
+    pub fn matches(&self, log: &Log, block_num: &u128) -> bool {
         // First topic should be event sig
         match log.topics.first() {
             None => false,
@@ -119,11 +119,11 @@ impl EthereumLogFilter {
                     // The `Log` matches the filter either if the filter contains
                     // a (contract address, event signature) pair that matches the
                     // `Log`...
-                    (_, Some(addr), s) => addr == &log.address && s == sig,
+                    (start_block, Some(addr), s) => addr == &log.address && s == sig && start_block < block_num,
 
                     // ...or if the filter contains a pair with no contract address
                     // but an event signature that matches the event
-                    (_, None, s) => s == sig,
+                    (start_block, None, s) => s == sig && start_block < block_num,
                 }),
         }
     }
@@ -205,9 +205,10 @@ impl FromIterator<(Option<u64>, Option<Address>, H256)> for EthereumLogFilter {
 
 #[derive(Clone, Debug)]
 pub struct EthereumCallFilter {
-    pub earliest_ethereum_block: Option<u64>,
-    pub contract_addresses_function_signatures: HashMap<Address, HashSet<[u8; 4]>>,
+    pub contract_addresses_function_signatures: HashMap<Address, (Option<u64>, HashSet<[u8; 4]>)>,
 }
+
+//pub type EthereumCallFilterAdressesFunctionSignatures = HashMap<>
 
 impl EthereumCallFilter {
     pub fn matches(&self, call: &EthereumCall) -> bool {
@@ -223,6 +224,7 @@ impl EthereumCallFilter {
             .contract_addresses_function_signatures
             .get(&call.to)
             .unwrap()
+            .1
             .is_empty()
         {
             // Allow the ability to match on calls to a contract generally
@@ -234,6 +236,7 @@ impl EthereumCallFilter {
         self.contract_addresses_function_signatures
             .get(&call.to)
             .unwrap()
+            .1
             .contains(&call.input.0[..4])
     }
 
@@ -241,13 +244,18 @@ impl EthereumCallFilter {
         iter.into_iter()
             .filter_map(|data_source| data_source.source.address.map(|addr| (addr, data_source)))
             .map(|(contract_addr, data_source)| {
+                let start_block = data_source
+                    .source
+                    .start_block
+                    .as_ref()
+                    .and_then(|b| b.parse::<u64>().ok());
                 data_source
                     .mapping
                     .call_handlers
                     .iter()
                     .map(move |call_handler| {
                         let sig = keccak256(call_handler.function.as_bytes());
-                        (contract_addr, [sig[0], sig[1], sig[2], sig[3]])
+                        (start_block, contract_addr, [sig[0], sig[1], sig[2], sig[3]])
                     })
             })
             .flatten()
@@ -264,30 +272,29 @@ impl EthereumCallFilter {
     pub fn is_empty(&self) -> bool {
         // Destructure to make sure we're checking all fields.
         let EthereumCallFilter {
-            earliest_ethereum_block,
             contract_addresses_function_signatures,
         } = self;
         contract_addresses_function_signatures.is_empty()
     }
 }
 
-impl FromIterator<(Address, [u8; 4])> for EthereumCallFilter {
+impl FromIterator<(Option<u64>, Address, [u8; 4])> for EthereumCallFilter {
     fn from_iter<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = (Address, [u8; 4])>,
+        I: IntoIterator<Item = (Option<u64>, Address, [u8; 4])>,
     {
-        let mut lookup: HashMap<Address, HashSet<[u8; 4]>> = HashMap::new();
-        iter.into_iter().for_each(|(address, function_signature)| {
-            if !lookup.contains_key(&address) {
-                lookup.insert(address, HashSet::default());
-            }
-            lookup.get_mut(&address).map(|set| {
-                set.insert(function_signature);
-                set
+        let mut lookup: HashMap<Address, (Option<u64>, HashSet<[u8; 4]>)> = HashMap::new();
+        iter.into_iter()
+            .for_each(|(start_block, address, function_signature)| {
+                if !lookup.contains_key(&address) {
+                    lookup.insert(address, (start_block, HashSet::default()));
+                }
+                lookup.get_mut(&address).map(|set| {
+                    set.1.insert(function_signature);
+                    set
+                });
             });
-        });
         EthereumCallFilter {
-            earliest_ethereum_block: None,
             contract_addresses_function_signatures: lookup,
         }
     }
@@ -296,22 +303,27 @@ impl FromIterator<(Address, [u8; 4])> for EthereumCallFilter {
 impl From<EthereumBlockFilter> for EthereumCallFilter {
     fn from(ethereum_block_filter: EthereumBlockFilter) -> Self {
         Self {
-            earliest_ethereum_block: ethereum_block_filter.earliest_ethereum_block,
             contract_addresses_function_signatures: ethereum_block_filter
                 .contract_addresses
                 .into_iter()
-                .map(|address| (address, HashSet::default()))
-                .collect::<HashMap<Address, HashSet<[u8; 4]>>>(),
+                .map(|(start_block_opt, address)| (address, (start_block_opt, HashSet::default())))
+                .collect::<HashMap<Address, (Option<u64>, HashSet<[u8; 4]>)>>(),
         }
     }
 }
 
+pub struct Checkpoints {
+    pub blocks: HashSet<Option<u64>>,
+}
+type StartBlock = u64;
+
 #[derive(Clone, Debug, Default)]
 pub struct EthereumBlockFilter {
-    pub earliest_ethereum_block: Option<u64>,
-    pub contract_addresses: HashSet<Address>,
+    pub contract_addresses: HashSet<(Option<u64>, Address)>,
     pub trigger_every_block: bool,
 }
+
+pub type EthereumBlockFilterAddresses = HashSet<Address>;
 
 impl EthereumBlockFilter {
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
@@ -337,16 +349,18 @@ impl EthereumBlockFilter {
                     .any(|block_handler| block_handler.filter.is_none());
 
                 filter_opt.extend(Self {
-                    earliest_ethereum_block: data_source
-                        .source
-                        .start_block
-                        .as_ref()
-                        .and_then(|b| b.parse::<u64>().ok()),
                     trigger_every_block: has_block_handler_without_filter,
                     contract_addresses: if has_block_handler_with_call_filter {
-                        vec![data_source.source.address.unwrap().to_owned()]
-                            .into_iter()
-                            .collect()
+                        vec![(
+                            data_source
+                                .source
+                                .start_block
+                                .as_ref()
+                                .and_then(|b| b.parse::<u64>().ok()),
+                            data_source.source.address.unwrap().to_owned(),
+                        )]
+                        .into_iter()
+                        .collect()
                     } else {
                         HashSet::default()
                     },
