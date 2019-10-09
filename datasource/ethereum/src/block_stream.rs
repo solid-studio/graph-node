@@ -985,6 +985,7 @@ where
         descendant_block: EthereumBlockWithCalls,
     ) -> Result<EthereumBlockWithTriggers, Error> {
         let mut triggers = Vec::new();
+
         triggers.append(&mut parse_log_triggers(
             log_filter,
             &descendant_block.ethereum_block,
@@ -1324,7 +1325,7 @@ fn parse_log_triggers(
     log_filter: EthereumLogFilter,
     block: &EthereumBlock,
 ) -> Vec<EthereumTrigger> {
-    let block_num = block.block.number;
+    let block_number = block.block.number.unwrap().as_u64();
     block
         .transaction_receipts
         .iter()
@@ -1333,7 +1334,7 @@ fn parse_log_triggers(
             receipt
                 .logs
                 .iter()
-                .filter(move |log| log_filter.matches(log, block_num))
+                .filter(move |log| log_filter.matches(log, block_number))
                 .map(move |log| EthereumTrigger::Log(log.clone()))
         })
         .collect()
@@ -1346,7 +1347,9 @@ fn parse_call_triggers(
     block.calls.as_ref().map_or(vec![], |calls| {
         calls
             .iter()
-            .filter(move |call| call_filter.matches(call))
+            .filter(move |call| {
+                call_filter.matches(call, block.ethereum_block.block.number.unwrap().as_u64())
+            })
             .map(move |call| EthereumTrigger::Call(call.clone()))
             .collect()
     })
@@ -1358,10 +1361,11 @@ fn parse_block_triggers(
 ) -> Vec<EthereumTrigger> {
     let trigger_every_block = block_filter.trigger_every_block;
     let call_filter = EthereumCallFilter::from(block_filter);
+    let block_number = block.ethereum_block.block.number.unwrap().as_u64();
     let mut triggers = block.calls.as_ref().map_or(vec![], |calls| {
         calls
             .iter()
-            .filter(move |call| call_filter.matches(call))
+            .filter(move |call| call_filter.matches(call, block_number))
             .map(move |call| EthereumTrigger::Block(EthereumBlockTriggerType::WithCallTo(call.to)))
             .collect::<Vec<EthereumTrigger>>()
     });

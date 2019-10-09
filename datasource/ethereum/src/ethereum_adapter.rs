@@ -309,7 +309,7 @@ where
                     )
                     .map(move |logs| {
                         logs.into_iter()
-                            .filter(|log| log_filter.matches(log))
+                            .filter(|log| log_filter.matches(log, low))
                             .collect::<Vec<Log>>()
                     }),
                 );
@@ -1064,7 +1064,7 @@ where
                     // a block range. Since subgraphs are subscribing to calls
                     // for a specific contract function an additional filter needs
                     // to be applied
-                    call_filter.matches(&call)
+                    call_filter.matches(&call, from)
                 })
                 .fold(HashSet::new(), |mut block_ptrs, call| {
                     block_ptrs.insert(EthereumBlockPointer::from((
