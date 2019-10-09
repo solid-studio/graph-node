@@ -124,6 +124,7 @@ struct BlockStreamContext<S, C, E> {
     log_filter: EthereumLogFilter,
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
+    start_blocks: Vec<u64>,
     templates_use_calls: bool,
     logger: Logger,
 }
@@ -140,6 +141,7 @@ impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
             log_filter: self.log_filter.clone(),
             call_filter: self.call_filter.clone(),
             block_filter: self.block_filter.clone(),
+            start_blocks: self.start_blocks.clone(),
             templates_use_calls: self.templates_use_calls,
             logger: self.logger.clone(),
         }
@@ -172,6 +174,13 @@ where
         reorg_threshold: u64,
         logger: Logger,
     ) -> Self {
+        let mut start_blocks = Vec::new();
+        start_blocks.append(&mut log_filter.start_blocks());
+        start_blocks.append(&mut call_filter.start_blocks());
+        start_blocks.append(&mut block_filter.start_blocks());
+        start_blocks.sort();
+        start_blocks.dedup();
+
         BlockStream {
             state: Mutex::new(BlockStreamState::New),
             consecutive_err_count: 0,
@@ -187,6 +196,7 @@ where
                 log_filter,
                 call_filter,
                 block_filter,
+                start_blocks,
                 templates_use_calls,
             },
         }
@@ -284,6 +294,7 @@ where
         let log_filter = self.log_filter.clone();
         let call_filter = self.call_filter.clone();
         let block_filter = self.block_filter.clone();
+        let start_blocks = self.start_blocks.clone();
         let reorg_threshold = ctx.reorg_threshold;
 
         // Get pointers from database for comparison
@@ -381,9 +392,19 @@ where
                         // Start with first block after subgraph ptr
                         let from = subgraph_ptr.number + 1;
 
-                        // End just prior to reorg threshold.
-                        // It isn't safe to go any farther due to race conditions.
-                        let to_limit = head_ptr.number - reorg_threshold;
+                        let next_start_block: u64 = dbg!(dbg!(start_blocks)
+                            .into_iter()
+                            .filter(|block_num| block_num > &from)
+                            .min()
+                            .unwrap_or(std::u64::MAX));
+
+                        // End either just before the the next data source start_block or
+                        // just prior to the reorg threshold. It isn't safe to go any farther
+                        // due to race conditions.
+                        let to_limit = cmp::min(
+                            head_ptr.number - reorg_threshold,
+                            next_start_block - 1,
+                        );
 
                         let to = if block_filter.trigger_every_block {
                             // If there is a block trigger on every block, go
