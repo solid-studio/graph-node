@@ -1303,6 +1303,7 @@ fn parse_log_triggers(
     log_filter: EthereumLogFilter,
     block: &EthereumBlock,
 ) -> Vec<EthereumTrigger> {
+    let block_num = block.block.number;
     block
         .transaction_receipts
         .iter()
@@ -1311,7 +1312,7 @@ fn parse_log_triggers(
             receipt
                 .logs
                 .iter()
-                .filter(move |log| log_filter.matches(log))
+                .filter(move |log| log_filter.matches(log, block_num))
                 .map(move |log| EthereumTrigger::Log(log.clone()))
         })
         .collect()

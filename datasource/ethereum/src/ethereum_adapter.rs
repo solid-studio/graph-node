@@ -220,16 +220,28 @@ where
             );
         }
 
+        let contract_address_and_event_sig_pairs: HashSet<(Option<u64>, Option<Address>, H256)> =
+            log_filter
+                .clone()
+                .contract_address_and_event_sig_pairs
+                .into_iter()
+                .filter(|(start_block, _addr, _sig)| match start_block {
+                    Some(block_num) => block_num <= &to,
+                    None => true,
+                })
+                .collect();
+        println!(
+            "length of log filter pairs, before: {}, after: {}",
+            &log_filter.contract_address_and_event_sig_pairs.len(),
+            &contract_address_and_event_sig_pairs.len()
+        );
         // Collect all event sigs
         let eth = self.clone();
         let logger = logger.to_owned();
 
-        let event_sigs = log_filter
-            .contract_address_and_event_sig_pairs
+        let event_sigs = contract_address_and_event_sig_pairs
             .iter()
-            .map(|(_addr, sig)| *sig)
-            .collect::<HashSet<H256>>()
-            .into_iter()
+            .map(|(_block_num, _addr, sig)| *sig)
             .collect::<Vec<H256>>();
 
         // Collect all contract addresses; if we have a data source without a contract
@@ -243,17 +255,15 @@ where
         // - At the top level in `BlockStreamContext::do_step`
         // - At the subgraph level in `SubgraphInstance::matches_log`
         // - At the data source level in `RuntimeHost::matches_log`
-        let addresses = if log_filter
-            .contract_address_and_event_sig_pairs
+        let addresses = if contract_address_and_event_sig_pairs
             .iter()
-            .any(|(addr, _)| addr.is_none())
+            .any(|(_start_block, addr, _)| addr.is_none())
         {
             vec![]
         } else {
-            log_filter
-                .contract_address_and_event_sig_pairs
+            contract_address_and_event_sig_pairs
                 .iter()
-                .map(|(addr, _sig)| match addr {
+                .map(|(_start_block, addr, _sig)| match addr {
                     None => unreachable!(
                         "shouldn't include addresses in Ethereum logs filter \
                          if there are data sources without a contract address"
@@ -1038,7 +1048,11 @@ where
         let addresses: Vec<H160> = call_filter
             .contract_addresses_function_signatures
             .iter()
-            .map(|(addr, _fsigs)| *addr)
+            .filter(|(_addr, (start_block, _fsigs))| match start_block {
+                Some(block_num) => block_num <= &to,
+                None => false,
+            })
+            .map(|(addr, (_start_block, _fsigs))| *addr)
             .collect::<HashSet<H160>>()
             .into_iter()
             .collect::<Vec<H160>>();
