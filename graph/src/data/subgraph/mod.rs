@@ -325,7 +325,7 @@ pub enum SubgraphAssignmentProviderEvent {
 #[derive(Fail, Debug)]
 pub enum SubgraphManifestValidationWarning {
     #[fail(display = "schema validation produced warnings: {:?}", _0)]
-    SchemaValidationWarning(SchemaImportError),
+    SchemaImportError(Error),
 }
 
 #[derive(Fail, Debug)]
@@ -854,10 +854,10 @@ impl UnvalidatedSubgraphManifest {
         (SubgraphManifest, Vec<SubgraphManifestValidationWarning>),
         Vec<SubgraphManifestValidationError>,
     > {
-        let (schemas, import_errors) = self.0.schema.resolve_schema_references(store);
+        let (schemas, import_errors) = store.resolve_import_graph(&self.0.schema);
         let validation_warnings = import_errors
             .into_iter()
-            .map(|err| SubgraphManifestValidationWarning::SchemaValidationWarning(err))
+            .map(|err| SubgraphManifestValidationWarning::SchemaImportError(err))
             .collect();
 
         let mut errors: Vec<SubgraphManifestValidationError> = vec![];
