@@ -789,6 +789,15 @@ impl Table {
             block_range = BLOCK_RANGE_COLUMN
         )?;
 
+        // Create an index on `lower(block_range)` to speed up block reversions
+        write!(
+            out,
+            "create index {table_name}_lbr\n    on \
+             {schema_name}.\"{table_name}\" using btree(lower(block_range));\n",
+            table_name = self.name,
+            schema_name = layout.schema
+        )?;
+
         // Create indexes. Skip columns whose type is an array of enum,
         // since there is no good way to index them with Postgres 9.6.
         // Once we move to Postgres 11, we can enable that
@@ -930,6 +939,8 @@ create table rel.\"thing\" (
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
+create index thing_lbr
+    on rel.\"thing\" using btree(lower(block_range));
 create index attr_0_0_thing_id
     on rel.\"thing\" using btree(\"id\");
 create index attr_0_1_thing_big_thing
@@ -949,6 +960,8 @@ create table rel.\"scalar\" (
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
+create index scalar_lbr
+    on rel.\"scalar\" using btree(lower(block_range));
 create index attr_1_0_scalar_id
     on rel.\"scalar\" using btree(\"id\");
 create index attr_1_1_scalar_bool
@@ -1005,6 +1018,8 @@ type SongStat @entity {
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
+create index musician_lbr
+    on rel.\"musician\" using btree(lower(block_range));
 create index attr_0_0_musician_id
     on rel.\"musician\" using btree(\"id\");
 create index attr_0_1_musician_name
@@ -1023,6 +1038,8 @@ create table rel.\"band\" (
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
+create index band_lbr
+    on rel.\"band\" using btree(lower(block_range));
 create index attr_1_0_band_id
     on rel.\"band\" using btree(\"id\");
 create index attr_1_1_band_name
@@ -1039,6 +1056,8 @@ create table rel.\"song\" (
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
+create index song_lbr
+    on rel.\"song\" using btree(lower(block_range));
 create index attr_2_0_song_id
     on rel.\"song\" using btree(\"id\");
 create index attr_2_1_song_title
@@ -1054,6 +1073,8 @@ create table rel.\"song_stat\" (
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
+create index song_stat_lbr
+    on rel.\"song_stat\" using btree(lower(block_range));
 create index attr_3_0_song_stat_id
     on rel.\"song_stat\" using btree(\"id\");
 create index attr_3_1_song_stat_played
@@ -1090,6 +1111,8 @@ type Habitat @entity {
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
+create index animal_lbr
+    on rel.\"animal\" using btree(lower(block_range));
 create index attr_0_0_animal_id
     on rel.\"animal\" using btree(\"id\");
 create index attr_0_1_animal_forest
@@ -1102,6 +1125,8 @@ create table rel.\"forest\" (
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
+create index forest_lbr
+    on rel.\"forest\" using btree(lower(block_range));
 create index attr_1_0_forest_id
     on rel.\"forest\" using btree(\"id\");
 
@@ -1114,6 +1139,8 @@ create table rel.\"habitat\" (
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
+create index habitat_lbr
+    on rel.\"habitat\" using btree(lower(block_range));
 create index attr_2_0_habitat_id
     on rel.\"habitat\" using btree(\"id\");
 create index attr_2_1_habitat_most_common
