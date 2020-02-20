@@ -809,6 +809,7 @@ async fn query_complexity_subscriptions() {
     };
 
     // This query is exactly at the maximum complexity.
+    // FIXME: Not collecting the stream because that will hang the test.
     execute_subscription(&Subscription { query }, options).unwrap();
 
     let query = Query {
