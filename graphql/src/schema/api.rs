@@ -556,7 +556,6 @@ fn add_query_type(
 }
 
 fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
-    // let name = ;
     let original_name = fulltext
         .arguments
         .iter()
@@ -569,12 +568,22 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
             }
         })
         .unwrap();
-    let mut original_name_clone = original_name.clone();
-    let (first_character, remaining_characters) = original_name_clone.split_at_mut(1);
-    first_character.make_ascii_uppercase();
-    remaining_characters.make_ascii_lowercase();
-    let union_type_name =
-        vec!["_Fulltext", first_character, remaining_characters, "Entity"].join("");
+
+    let entity_name = fulltext
+        .arguments
+        .iter()
+        .find(|(name, _)| &name[..] == "include")
+        .and_then(|(_, value)| match value {
+            Value::List(includes) => includes.iter().next().and_then(|value| match value {
+                Value::Object(include) => match include.get("entity") {
+                    Some(Value::String(entity)) => Some(entity),
+                    _ => None,
+                },
+                _ => None,
+            }),
+            _ => None,
+        })?;
+
     let arguments = vec![
         // text: String
         InputValue {
@@ -618,7 +627,9 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
         description: None,
         name: original_name, // fulltext.name
         arguments: arguments,
-        field_type: Type::NamedType(union_type_name), // search enum name
+        field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
+            Box::new(Type::NamedType(entity_name.clone())),
+        ))))), // included entity type name
         directives: vec![fulltext.clone()],
     })
 }
