@@ -91,13 +91,14 @@ pub enum SchemaValidationError {
     FulltextIncludeInvalid,
 }
 
-enum FulltextLanguage {
+#[derive(Clone, Debug, PartialEq)]
+pub enum FulltextLanguage {
     Simple,
     Danish,
     Dutch,
     English,
     Finnish,
-    Fresh,
+    French,
     German,
     Hungarian,
     Italian,
@@ -119,7 +120,7 @@ impl TryFrom<&String> for FulltextLanguage {
             "DUTCH" => Ok(FulltextLanguage::Dutch),
             "ENGLISH" => Ok(FulltextLanguage::English),
             "FINNISH" => Ok(FulltextLanguage::Finnish),
-            "FRESH" => Ok(FulltextLanguage::Fresh),
+            "FRENCH" => Ok(FulltextLanguage::French),
             "GERMAN" => Ok(FulltextLanguage::German),
             "HUNGARIAN" => Ok(FulltextLanguage::Hungarian),
             "ITALIAN" => Ok(FulltextLanguage::Italian),
@@ -138,7 +139,31 @@ impl TryFrom<&String> for FulltextLanguage {
     }
 }
 
-enum FulltextAlgorithm {
+impl FulltextLanguage {
+    pub fn as_sql(&self) -> String {
+        String::from(match self {
+            Self::Simple => "simple",
+            Self::Danish => "danish",
+            Self::Dutch => "dutch",
+            Self::English => "english",
+            Self::Finnish => "finnish",
+            Self::French => "french",
+            Self::German => "german",
+            Self::Hungarian => "hungarian",
+            Self::Italian => "italian",
+            Self::Norwegian => "norwegian",
+            Self::Portugese => "portugese",
+            Self::Romanian => "romanian",
+            Self::Russian => "russian",
+            Self::Spanish => "spanish",
+            Self::Swedish => "swedish",
+            Self::Turkish => "turkish",
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum FulltextAlgorithm {
     Ranked,
     ProximityRanked,
 }
@@ -154,6 +179,15 @@ impl TryFrom<&String> for FulltextAlgorithm {
                 invalid,
             )),
         }
+    }
+}
+
+impl FulltextAlgorithm {
+    pub fn as_sql(&self) -> String {
+        String::from(match self {
+            Self::Ranked => "ts_rank(",
+            Self::ProximityRanked => "ts_rank_cd(",
+        })
     }
 }
 
